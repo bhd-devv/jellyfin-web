@@ -1102,6 +1102,38 @@ export default function (view) {
         setTimeout(resetIdle, 0);
     }
 
+    function showSubtitleSizeMenu(actionsheet, positionTo, player) {
+        const sizes = [
+            { id: 'smaller', name: 'Smaller' },
+            { id: 'small', name: 'Small' },
+            { id: 'normal', name: 'Normal' },
+            { id: 'large', name: 'Large' },
+            { id: 'larger', name: 'Larger' },
+            { id: 'extralarge', name: 'ExtraLarge' }
+        ];
+        const settings = userSettings.currentSettings.getSubtitleAppearanceSettings();
+        const currentSize = settings.textSize && settings.textSize !== 'medium' ? settings.textSize : 'normal';
+
+        return actionsheet.show({
+            title: globalize.translate('LabelTextSize'),
+            items: sizes.map(size => ({
+                id: size.id,
+                name: globalize.translate(size.name),
+                selected: size.id === currentSize
+            })),
+            positionTo: positionTo
+        }).then(id => {
+            if (player !== currentPlayer || !sizes.some(size => size.id === id)) return;
+
+            const appearance = userSettings.currentSettings.getSubtitleAppearanceSettings();
+            userSettings.currentSettings.setSubtitleAppearanceSettings({
+                ...appearance,
+                textSize: id === 'normal' ? '' : id
+            });
+            player.updateSubtitleAppearance();
+        });
+    }
+
     function showSubtitleTrackSelection() {
         const player = currentPlayer;
         const streams = playbackManager.subtitleTracks(player);
@@ -1151,6 +1183,15 @@ export default function (view) {
             menuItems.unshift(secondarySubtitleMenuItem);
         }
 
+        const currentTrack = playbackManager.getSubtitleStream(player, currentIndex);
+        if (typeof player?.canSetSubtitleAppearance === 'function' && player.canSetSubtitleAppearance(currentTrack)) {
+            menuItems.unshift({
+                name: globalize.translate('LabelTextSize'),
+                id: 'subtitlesize',
+                icon: 'format_size'
+            });
+        }
+
         const positionTo = this;
 
         import('components/actionSheet/actionSheet').then(({ default: actionsheet }) => {
@@ -1159,6 +1200,10 @@ export default function (view) {
                 items: menuItems,
                 positionTo: positionTo
             }).then(function (id) {
+                if (id === 'subtitlesize') {
+                    return showSubtitleSizeMenu(actionsheet, positionTo, player);
+                }
+
                 if (id === 'secondarysubtitle') {
                     try {
                         showSecondarySubtitlesMenu(actionsheet, positionTo);

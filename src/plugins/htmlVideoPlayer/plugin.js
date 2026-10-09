@@ -1598,6 +1598,24 @@ export class HtmlVideoPlayer {
         }, userSettings.getSubtitleAppearanceSettings());
     }
 
+    canSetSubtitleAppearance(track) {
+        return Boolean(this.#mediaElement
+            && track?.IsTextSubtitleStream
+            && (track.DeliveryMethod === 'External' || track.DeliveryMethod === 'Embed')
+            && !ASS_SUBTITLE_CODECS.includes((track.Codec || '').toLowerCase()));
+    }
+
+    updateSubtitleAppearance() {
+        if (!this.#mediaElement) return;
+
+        this.setCueAppearance();
+        for (const subtitleElement of [this.#videoSubtitlesElem, this.#videoSecondarySubtitlesElem]) {
+            if (subtitleElement) {
+                this.setSubtitleAppearance(subtitleElement.parentNode, subtitleElement);
+            }
+        }
+    }
+
     /**
      * @private
      */
