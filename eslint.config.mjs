@@ -249,6 +249,8 @@ export default tseslint.config(
                 }
             },
             polyfills: [
+                'AbortController',
+                'AbortSignal',
                 'Promise',
                 // whatwg-fetch
                 'fetch',

@@ -1,4 +1,5 @@
 import { MediaSegmentType } from '@jellyfin/sdk/lib/generated-client/models/media-segment-type';
+import { isLanguageLearningAvailable } from 'components/languageLearning/availability';
 import escapeHTML from 'escape-html';
 
 import { MediaSegmentAction } from 'apps/legacy/features/playback/constants/mediaSegmentAction';
@@ -204,6 +205,8 @@ function showHideQualityFields(context, user, apiClient) {
 }
 
 function loadForm(context, user, userSettings, systemInfo, apiClient) {
+    context.querySelector('.chkLanguageLearning').checked = userSettings.get('languageLearningEnabled') === 'true';
+    context.querySelector('.chkLanguageLearning').closest('.checkboxContainer').classList.toggle('hide', !isLanguageLearningAvailable());
     const loggedInUserId = apiClient.getCurrentUserId();
     const userId = user.Id;
 
@@ -303,6 +306,9 @@ function loadForm(context, user, userSettings, systemInfo, apiClient) {
 }
 
 function saveUser(context, user, userSettingsInstance, apiClient) {
+    if (isLanguageLearningAvailable()) {
+        userSettingsInstance.set('languageLearningEnabled', context.querySelector('.chkLanguageLearning').checked.toString());
+    }
     appSettings.enableSystemExternalPlayers(context.querySelector('.chkExternalVideoPlayer').checked);
 
     appSettings.maxChromecastBitrate(context.querySelector('.selectChromecastVideoQuality').value);

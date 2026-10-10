@@ -1,4 +1,5 @@
 import Favorite from '@mui/icons-material/Favorite';
+import MenuBook from '@mui/icons-material/MenuBook';
 import Home from '@mui/icons-material/Home';
 import Divider from '@mui/material/Divider';
 import Icon from '@mui/material/Icon';
@@ -12,6 +13,7 @@ import React from 'react';
 import { useLocation } from 'react-router-dom';
 
 import ListItemLink from 'components/ListItemLink';
+import { isLanguageLearningAvailable } from 'components/languageLearning/availability';
 import { appRouter } from 'components/router/appRouter';
 import { useUserViews } from 'hooks/api/useUserViews';
 import { useApi } from 'hooks/useApi';
@@ -53,6 +55,16 @@ const MainDrawerContent = () => {
                         <ListItemText primary={globalize.translate('Favorites')} />
                     </ListItemLink>
                 </ListItem>
+                {isLanguageLearningAvailable() && (
+                    <ListItem disablePadding>
+                        <ListItemLink to='/vocabulary' selected={location.pathname === '/vocabulary'}>
+                            <ListItemIcon>
+                                <MenuBook />
+                            </ListItemIcon>
+                            <ListItemText primary={globalize.translate('LanguageLearningVocabulary')} />
+                        </ListItemLink>
+                    </ListItem>
+                )}
             </List>
 
             {/* CUSTOM LINKS */}

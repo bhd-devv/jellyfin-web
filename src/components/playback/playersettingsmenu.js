@@ -3,6 +3,8 @@ import { playbackManager } from '../playback/playbackmanager';
 import globalize from 'lib/globalize';
 import { ServerConnections } from 'lib/jellyfin-apiclient';
 import qualityoptions from '../qualityOptions';
+import { currentSettings as userSettings } from 'scripts/settings/userSettings';
+import { isLanguageLearningAvailable } from 'components/languageLearning/availability';
 
 function showQualityMenu(player, btn) {
     const videoStream = playbackManager.currentMediaSource(player).MediaStreams.filter(function (stream) {
@@ -179,6 +181,14 @@ function showWithUser(options, player, user) {
     const supportedCommands = playbackManager.getSupportedCommands(player);
 
     const menuItems = [];
+    if (isLanguageLearningAvailable() && player.setLanguageLearningEnabled) {
+        menuItems.push({
+            name: globalize.translate('LanguageLearning'),
+            id: 'languagelearning',
+            selected: userSettings.get('languageLearningEnabled') === 'true',
+            asideText: globalize.translate(userSettings.get('languageLearningEnabled') === 'true' ? 'LanguageLearningOn' : 'LanguageLearningOff')
+        });
+    }
     if (supportedCommands.indexOf('SetAspectRatio') !== -1) {
         const currentAspectRatioId = playbackManager.getAspectRatio(player);
         const currentAspectRatio = playbackManager.getSupportedAspectRatios(player).filter(function (i) {
@@ -264,6 +274,8 @@ export function show(options) {
 
 function handleSelectedOption(id, options, player) {
     switch (id) {
+        case 'languagelearning':
+            return player.setLanguageLearningEnabled(userSettings.get('languageLearningEnabled') !== 'true');
         case 'quality':
             return showQualityMenu(player, options.positionTo);
         case 'aspectratio':

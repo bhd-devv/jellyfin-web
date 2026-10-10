@@ -1,4 +1,8 @@
 import DOMPurify from 'dompurify';
+import LanguageLearning from 'components/languageLearning/languageLearning';
+import { canLearnTrack } from 'components/languageLearning/subtitleWords';
+import { isLanguageLearningAvailable, isLanguageLearningEnabled } from 'components/languageLearning/availability';
+import toast from 'components/toast/toast';
 import debounce from 'lodash-es/debounce';
 import Screenfull from 'screenfull';
 
@@ -372,6 +376,10 @@ export class HtmlVideoPlayer {
      */
     #lastProfile;
 
+    #languageLearning;
+
+    #subtitleRenderVersions = [0, 0];
+
     constructor() {
         if (browser.edgeUwp) {
             this.name = 'Windows Video Player';
@@ -382,6 +390,40 @@ export class HtmlVideoPlayer {
 
     currentSrc() {
         return this.#currentSrc;
+    }
+
+    async setLanguageLearningEnabled(enabled) {
+        if (!isLanguageLearningAvailable()) return;
+        userSettings.set('languageLearningEnabled', enabled.toString());
+        this.#languageLearning?.close();
+        const video = this.#mediaElement;
+        if (!video || !this._currentPlayOptions) return;
+        const tracks = [this.#customTrackIndex, this.#customSecondaryTrackIndex];
+        const offsets = [this.#currentTrackOffset || 0, this.#secondaryTrackOffset || 0];
+        const availableTracks = getMediaStreamTextTracks(this._currentPlayOptions.mediaSource);
+        if (enabled && !tracks.some(index => canLearnTrack(availableTracks.find(track => track.Index === index)))) {
+            toast(globalize.translate('LanguageLearningUnavailableTrack'));
+        }
+        this.destroyCustomTrack(video);
+        this.resetSubtitleOffset();
+        for (let index = 0; index < tracks.length; index++) {
+            const track = availableTracks.find(value => value.Index === tracks[index]);
+            if (!track) continue;
+            if (index === PRIMARY_TEXT_TRACK_INDEX) {
+                this.#customTrackIndex = track.Index;
+            } else {
+                this.#customSecondaryTrackIndex = track.Index;
+            }
+            await this.renderTracksEvents(video, track, this._currentPlayOptions.item, index);
+            const events = index === PRIMARY_TEXT_TRACK_INDEX ? this.#currentTrackEvents : this.#currentSecondaryTrackEvents;
+            if (events) {
+                this.setTrackEventsSubtitleOffset(events, offsets[index], index);
+            } else {
+                const nativeTrack = this.getTextTracks()[index];
+                if (nativeTrack) this.setTextTrackSubtitleOffset(nativeTrack, offsets[index], index);
+            }
+        }
+        this.onTimeUpdate({ target: video });
     }
 
     /**
@@ -940,6 +982,7 @@ export class HtmlVideoPlayer {
     }
 
     stop(destroyPlayer) {
+        this.#languageLearning?.close(false);
         const elem = this.#mediaElement;
         const src = this.#currentSrc;
 
@@ -961,6 +1004,8 @@ export class HtmlVideoPlayer {
     }
 
     destroy() {
+        this.#languageLearning?.close(false);
+        this.#languageLearning = null;
         this.setSubtitleOffset.cancel();
 
         destroyHlsPlayer(this);
@@ -1299,6 +1344,14 @@ export class HtmlVideoPlayer {
      * @private
      */
     destroyCustomTrack(videoElement, targetTrackIndex) {
+        this.#languageLearning?.close(false);
+        this.#languageLearning = null;
+        if (targetTrackIndex == null) {
+            this.#subtitleRenderVersions[0]++;
+            this.#subtitleRenderVersions[1]++;
+        } else {
+            this.#subtitleRenderVersions[targetTrackIndex]++;
+        }
         if (targetTrackIndex === undefined) {
             this.endPendingSubtitleLoad(PRIMARY_TEXT_TRACK_INDEX);
             this.endPendingSubtitleLoad(SECONDARY_TEXT_TRACK_INDEX);
@@ -1344,7 +1397,15 @@ export class HtmlVideoPlayer {
 
         this.incrementFetchQueue();
         try {
-            const response = await fetch(getTextTrackUrl(track, item, '.js'));
+            let url = getTextTrackUrl(track, item, '.js');
+            let headers;
+            if (isLanguageLearningEnabled(userSettings) && canLearnTrack(track)) {
+                const apiClient = ServerConnections.getApiClient(item.ServerId);
+                const sourceId = encodeURIComponent(this._currentPlayOptions.mediaSource.Id);
+                url = apiClient.getUrl(`Videos/${item.Id}/${sourceId}/Subtitles/${track.Index}/Stream.js`, { copyTimestamps: true });
+                headers = { 'X-Emby-Token': apiClient.accessToken() };
+            }
+            const response = await fetch(url, { headers });
 
             if (!response.ok) {
                 throw new Error(response);
@@ -1549,43 +1610,41 @@ export class HtmlVideoPlayer {
     /**
      * @private
      */
-    renderSubtitlesWithCustomElement(videoElement, track, item, targetTextTrackIndex) {
-        this.fetchSubtitles(track, item).then((subtitleData) => {
-            // Exit if the video element was destroyed while fetching subtitles
-            if (!this.#mediaElement) return;
+    async renderSubtitlesWithCustomElement(videoElement, track, item, targetTextTrackIndex) {
+        const version = ++this.#subtitleRenderVersions[targetTextTrackIndex];
+        const subtitleData = await this.fetchSubtitles(track, item);
+        if (version !== this.#subtitleRenderVersions[targetTextTrackIndex] || !this.#mediaElement) return;
 
-            const subtitleAppearance = userSettings.getSubtitleAppearanceSettings();
-            const subtitleVerticalPosition = parseInt(subtitleAppearance.verticalPosition, 10);
-
-            if (!this.#videoSubtitlesElem && !this.isSecondaryTrack(targetTextTrackIndex)) {
-                let subtitlesContainer = document.querySelector('.videoSubtitles');
-                if (!subtitlesContainer) {
-                    subtitlesContainer = document.createElement('div');
-                    subtitlesContainer.classList.add('videoSubtitles');
-                }
-                const subtitlesElement = document.createElement('div');
-                subtitlesElement.classList.add('videoSubtitlesInner');
-                subtitlesContainer.appendChild(subtitlesElement);
-                this.#videoSubtitlesElem = subtitlesElement;
-                this.setSubtitleAppearance(subtitlesContainer, this.#videoSubtitlesElem);
-                videoElement.parentNode.appendChild(subtitlesContainer);
-                this.#currentTrackEvents = subtitleData.TrackEvents;
-            } else if (!this.#videoSecondarySubtitlesElem && this.isSecondaryTrack(targetTextTrackIndex)) {
-                const subtitlesContainer = document.querySelector('.videoSubtitles');
-                if (!subtitlesContainer) return;
-                const secondarySubtitlesElement = document.createElement('div');
-                secondarySubtitlesElement.classList.add('videoSecondarySubtitlesInner');
-                // determine the order of the subtitles
-                if (subtitleVerticalPosition < 0) {
-                    subtitlesContainer.insertBefore(secondarySubtitlesElement, subtitlesContainer.firstChild);
-                } else {
-                    subtitlesContainer.appendChild(secondarySubtitlesElement);
-                }
-                this.#videoSecondarySubtitlesElem = secondarySubtitlesElement;
-                this.setSubtitleAppearance(subtitlesContainer, this.#videoSecondarySubtitlesElem);
-                this.#currentSecondaryTrackEvents = subtitleData.TrackEvents;
+        const subtitleAppearance = userSettings.getSubtitleAppearanceSettings();
+        const subtitleVerticalPosition = parseInt(subtitleAppearance.verticalPosition, 10);
+        let subtitlesContainer = videoElement.parentNode.querySelector('.videoSubtitles');
+        if (!subtitlesContainer) {
+            subtitlesContainer = document.createElement('div');
+            subtitlesContainer.classList.add('videoSubtitles');
+            videoElement.parentNode.appendChild(subtitlesContainer);
+        }
+        if (!this.#videoSubtitlesElem && !this.isSecondaryTrack(targetTextTrackIndex)) {
+            const subtitlesElement = document.createElement('div');
+            subtitlesElement.classList.add('videoSubtitlesInner');
+            subtitlesContainer.appendChild(subtitlesElement);
+            this.#videoSubtitlesElem = subtitlesElement;
+            this.setSubtitleAppearance(subtitlesContainer, this.#videoSubtitlesElem);
+            this.#currentTrackEvents = subtitleData.TrackEvents;
+            this.#videoSubtitlesElem.learningTrack = canLearnTrack(track) ? track.Index : null;
+        } else if (!this.#videoSecondarySubtitlesElem && this.isSecondaryTrack(targetTextTrackIndex)) {
+            const secondarySubtitlesElement = document.createElement('div');
+            secondarySubtitlesElement.classList.add('videoSecondarySubtitlesInner');
+            if (subtitleVerticalPosition < 0) {
+                subtitlesContainer.insertBefore(secondarySubtitlesElement, subtitlesContainer.firstChild);
+            } else {
+                subtitlesContainer.appendChild(secondarySubtitlesElement);
             }
-        });
+            this.#videoSecondarySubtitlesElem = secondarySubtitlesElement;
+            this.setSubtitleAppearance(subtitlesContainer, this.#videoSecondarySubtitlesElem);
+            this.#currentSecondaryTrackEvents = subtitleData.TrackEvents;
+            this.#videoSecondarySubtitlesElem.learningTrack = canLearnTrack(track) ? track.Index : null;
+        }
+        this.onTimeUpdate({ target: videoElement });
     }
 
     /**
@@ -1645,6 +1704,10 @@ export class HtmlVideoPlayer {
      * @private
      */
     async renderTracksEvents(videoElement, track, item, targetTextTrackIndex = PRIMARY_TEXT_TRACK_INDEX) {
+        if (isLanguageLearningEnabled(userSettings) && canLearnTrack(track)) {
+            await this.renderSubtitlesWithCustomElement(videoElement, track, item, targetTextTrackIndex);
+            return;
+        }
         if (!itemHelper.isLocalItem(item) || track.IsExternal) {
             const format = (track.Codec || '').toLowerCase();
             if (ASS_SUBTITLE_CODECS.includes(format)) {
@@ -1661,7 +1724,7 @@ export class HtmlVideoPlayer {
             }
 
             if (useCustomSubtitles(userSettings)) {
-                this.renderSubtitlesWithCustomElement(videoElement, track, item, targetTextTrackIndex);
+                await this.renderSubtitlesWithCustomElement(videoElement, track, item, targetTextTrackIndex);
                 return;
             }
         }
@@ -1743,8 +1806,13 @@ export class HtmlVideoPlayer {
                 }
 
                 if (selectedTrackEvent?.Text) {
-                    subtitleTextElement.innerHTML = DOMPurify.sanitize(
-                        normalizeTrackEventText(selectedTrackEvent.Text, true));
+                    if (isLanguageLearningEnabled(userSettings) && subtitleTextElement.learningTrack != null) {
+                        this.#languageLearning ||= new LanguageLearning(this.#mediaElement, this._currentPlayOptions.item, this._currentPlayOptions.mediaSource.Id);
+                        this.#languageLearning.render(subtitleTextElement, selectedTrackEvent, trackEvents.indexOf(selectedTrackEvent), subtitleTextElement.learningTrack);
+                    } else {
+                        subtitleTextElement.innerHTML = DOMPurify.sanitize(
+                            normalizeTrackEventText(selectedTrackEvent.Text, true));
+                    }
                     subtitleTextElement.classList.remove('hide');
                 } else {
                     subtitleTextElement.classList.add('hide');
