@@ -1,5 +1,10 @@
+.languageLearning-overlay {
+    z-index: 1000;
+    pointer-events: none;
+}
+
 .languageLearning-subtitles {
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .languageLearning-word {
@@ -12,6 +17,7 @@
     line-height: inherit;
     text-shadow: inherit;
     cursor: pointer;
+    pointer-events: auto;
 
     &:hover,
     &:focus-visible {

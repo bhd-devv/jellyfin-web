@@ -39,6 +39,20 @@ afterEach(() => {
 });
 
 describe('language learning dialog', () => {
+    it('mounts outside the fixed video container so the OSD cannot cover the dialog', async () => {
+        const playerContainer = document.createElement('div');
+        playerContainer.className = 'videoPlayerContainer';
+        document.body.appendChild(playerContainer);
+        playerContainer.appendChild(video);
+        learning.open(selection, video);
+        await vi.waitFor(() => expect(learning.result).not.toBeNull());
+        expect(document.body.querySelector(':scope > .languageLearning-backdrop')).not.toBeNull();
+        expect(playerContainer.querySelector('[role="dialog"]')).toBeNull();
+        learning.close();
+        expect(document.querySelector('.languageLearning-backdrop')).toBeNull();
+        expect(video.play).toHaveBeenCalledOnce();
+    });
+
     it('pauses and expands incrementally while preserving the selected occurrence', async () => {
         learning.open(selection, video);
         await vi.waitFor(() => expect(learning.result).not.toBeNull());

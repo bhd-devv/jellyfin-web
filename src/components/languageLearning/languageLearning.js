@@ -92,7 +92,7 @@ export default class LanguageLearning {
         this.root.addEventListener('dblclick', event => event.stopPropagation());
         this.keyHandler = event => this.onKeyDown(event);
         document.addEventListener('keydown', this.keyHandler, true);
-        this.video.parentNode.appendChild(this.root);
+        document.body.appendChild(this.root);
         this.closeButton.focus();
         this.lookup(0);
     }

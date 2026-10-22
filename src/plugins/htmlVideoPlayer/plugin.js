@@ -308,6 +308,10 @@ export class HtmlVideoPlayer {
     /**
      * @type {HTMLElement | null | undefined}
      */
+    #videoSubtitlesContainer;
+    /**
+     * @type {HTMLElement | null | undefined}
+     */
     #videoSecondarySubtitlesElem;
     /**
      * @type {any | null | undefined}
@@ -1291,15 +1295,35 @@ export class HtmlVideoPlayer {
                 tryRemoveElement(this.#videoSecondarySubtitlesElem);
                 this.#videoSecondarySubtitlesElem = null;
             }
-        } else if (this.#videoSubtitlesElem) {
-            // destroy all
-            const subtitlesContainer = this.#videoSubtitlesElem.parentNode;
-            if (subtitlesContainer) {
-                tryRemoveElement(subtitlesContainer);
-            }
+        } else {
+            if (this.#videoSubtitlesElem) tryRemoveElement(this.#videoSubtitlesElem);
+            if (this.#videoSecondarySubtitlesElem) tryRemoveElement(this.#videoSecondarySubtitlesElem);
             this.#videoSubtitlesElem = null;
             this.#videoSecondarySubtitlesElem = null;
         }
+        this.updateSubtitleContainer();
+    }
+
+    /**
+     * @private
+     */
+    updateSubtitleContainer() {
+        const container = this.#videoSubtitlesContainer;
+        if (!container) return;
+
+        const subtitleElements = [this.#videoSubtitlesElem, this.#videoSecondarySubtitlesElem].filter(Boolean);
+        if (!subtitleElements.length) {
+            tryRemoveElement(container);
+            this.#videoSubtitlesContainer = null;
+            return;
+        }
+
+        const interactive = isLanguageLearningEnabled(userSettings)
+            && subtitleElements.some(element => element.learningTrack != null);
+        container.classList.toggle('languageLearning-overlay', interactive);
+        // The fixed video container is painted below the fullscreen OSD page.
+        const parent = interactive ? document.body : this.#mediaElement?.parentNode;
+        if (parent && container.parentNode !== parent) parent.appendChild(container);
     }
 
     /**
@@ -1617,11 +1641,12 @@ export class HtmlVideoPlayer {
 
         const subtitleAppearance = userSettings.getSubtitleAppearanceSettings();
         const subtitleVerticalPosition = parseInt(subtitleAppearance.verticalPosition, 10);
-        let subtitlesContainer = videoElement.parentNode.querySelector('.videoSubtitles');
+        let subtitlesContainer = this.#videoSubtitlesContainer;
         if (!subtitlesContainer) {
             subtitlesContainer = document.createElement('div');
             subtitlesContainer.classList.add('videoSubtitles');
             videoElement.parentNode.appendChild(subtitlesContainer);
+            this.#videoSubtitlesContainer = subtitlesContainer;
         }
         if (!this.#videoSubtitlesElem && !this.isSecondaryTrack(targetTextTrackIndex)) {
             const subtitlesElement = document.createElement('div');
@@ -1644,6 +1669,7 @@ export class HtmlVideoPlayer {
             this.#currentSecondaryTrackEvents = subtitleData.TrackEvents;
             this.#videoSecondarySubtitlesElem.learningTrack = canLearnTrack(track) ? track.Index : null;
         }
+        this.updateSubtitleContainer();
         this.onTimeUpdate({ target: videoElement });
     }
 
