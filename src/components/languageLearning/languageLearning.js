@@ -99,12 +99,11 @@ export default class LanguageLearning {
 
     async request(path, method, body) {
         const apiClient = ServerConnections.getApiClient(this.item.ServerId);
+        const headers = { 'Content-Type': 'application/json' };
+        apiClient.setRequestHeaders(headers);
         const response = await fetch(apiClient.getUrl('LanguageLearning/' + path), {
             method,
-            headers: {
-                'X-Emby-Token': apiClient.accessToken(),
-                'Content-Type': 'application/json'
-            },
+            headers,
             body: body ? JSON.stringify(body) : undefined,
             signal: this.abort.signal
         });

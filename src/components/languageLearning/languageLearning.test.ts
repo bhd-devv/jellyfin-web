@@ -3,7 +3,11 @@ import LanguageLearning from './languageLearning';
 
 vi.mock('lib/globalize', () => ({ default: { translate: (key: string) => key } }));
 vi.mock('lib/jellyfin-apiclient', () => ({
-    ServerConnections: { getApiClient: () => ({ getUrl: (path: string) => '/' + path, accessToken: () => 'test-token' }) }
+    ServerConnections: { getApiClient: () => ({
+        getUrl: (path: string) => '/' + path,
+        /* eslint-disable-next-line compat/compat -- mock the legacy API client's request-header method */
+        ['setRequestHeaders']: (headers: Record<string, string>) => { headers.Authorization = 'MediaBrowser Token="test-token"'; }
+    }) }
 }));
 
 const selection = { ItemId: 'item', MediaSourceId: 'source', SubtitleStreamIndex: 2, CueIndex: 0, WordOffset: 0, Word: 'Go' };

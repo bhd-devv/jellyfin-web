@@ -17,12 +17,14 @@ export interface VocabularyEntry {
     DateCreated: string;
 }
 
-export type VocabularyClient = Pick<ApiClient, 'getUrl' | 'accessToken' | 'serverId'>;
+export type VocabularyClient = Pick<ApiClient, 'getUrl' | 'setRequestHeaders' | 'serverId'>;
 
 async function request<Result>(client: VocabularyClient, path: string, method: string, signal?: AbortSignal): Promise<Result> {
+    const headers: Record<string, string> = {};
+    client.setRequestHeaders(headers);
     const response = await fetch(client.getUrl('LanguageLearning/Vocabulary' + path), {
         method,
-        headers: { 'X-Emby-Token': client.accessToken() },
+        headers,
         signal
     });
     if (!response.ok) {

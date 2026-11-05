@@ -11,7 +11,11 @@ vi.mock('components/layoutManager', () => ({ default: { tv: false } }));
 vi.mock('lib/globalize', () => ({ default: { translate: (key: string) => key } }));
 vi.mock('hooks/useApi', () => ({
     useApi: () => ({
-        __legacyApiClient__: { getUrl: (path: string) => '/' + path, accessToken: () => 'token', serverId: () => 'server' },
+        __legacyApiClient__: {
+            getUrl: (path: string) => '/' + path,
+            setRequestHeaders: (headers: Record<string, string>) => { headers.Authorization = 'MediaBrowser Token="token"'; },
+            serverId: () => 'server'
+        },
         user: { Id: 'user' }
     })
 }));
@@ -75,7 +79,7 @@ describe('personal vocabulary', () => {
         expect(container.querySelector('details')?.textContent).toContain(entry.Lemma);
         expect(container.querySelector('.vocabulary-partOfSpeech')?.textContent).toBe('verb');
         expect(container.querySelector('.vocabulary-footer a')?.getAttribute('href')).toBe('#/details?id=video-id');
-        expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ headers: { 'X-Emby-Token': 'token' } }));
+        expect(fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ headers: { Authorization: 'MediaBrowser Token="token"' } }));
     });
 
     it('debounces search and paginates on the server', async () => {
